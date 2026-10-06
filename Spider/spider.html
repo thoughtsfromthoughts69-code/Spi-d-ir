@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ARACHNO-BOT FPS</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+            touch-action: none;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .joystick-container {
+            position: absolute;
+            bottom: 40px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+        }
+
+        #move-joystick { left: 40px; }
+        #look-joystick { right: 40px; }
+
+        .joystick-knob {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 255, 255, 0.4);
+            border: 2px solid #0ff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 15px #0ff;
+        }
+
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 30px;
+            height: 30px;
+            border: 2px solid rgba(0, 255, 255, 0.7);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: #0ff;
+        }
+        #crosshair::before { top: 50%; left: -5px; width: 40px; height: 1px; transform: translateY(-50%); }
+        #crosshair::after { left: 50%; top: -5px; height: 40px; width: 1px; transform: translateX(-50%); }
+
+        #fire-btn {
+            position: absolute;
+            bottom: 180px;
+            right: 50px;
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 0, 0, 0.3);
+            border: 3px solid #f00;
+            border-radius: 50%;
+            color: white;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            text-transform: uppercase;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+        }
+
+        #stats {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            text-shadow: 0 0 5px #0ff;
+            font-size: 14px;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-left: 3px solid #0ff;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #0ff;
+            z-index: 100;
+        }
+
+        button#start-btn {
+            background: transparent;
+            border: 2px solid #0ff;
+            color: #0ff;
+            padding: 15px 40px;
+            font-size: 20px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: 0.3s;
+        }
+        button#start-btn:hover { background: #0ff; color: #000; }
+        
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <h1>ARACHNO-UNIT v1.0</h1>
+        <p>MOBILE RECONNAISSANCE INTERFACE</p>
+        <button id="start-btn">ENGAGE SYSTEM</button>
+    </div>
+
+    <div id="ui-layer">
+        <div id="stats">
+            UNIT: X-4 SPIDER<br>
+            CORE TEMP: STABLE<br>
+            AMMO: ∞<br>
+            OBJECTIVE: CLEAR DRONES
+        </div>
+        
+        <div id="crosshair"></div>
+        
+        <div id="move-joystick" class="joystick-container">
+            <div id="move-knob" class="joystick-knob"></div>
+        </div>
+        
+        <div id="look-joystick" class="joystick-container">
+            <div id="look-knob" class="joystick-knob"></div>
+        </div>
+
+        <div id="fire-btn">FIRE</div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- Configuration & State ---
+        let scene, camera, renderer, clock;
+        let moveJoystick = { active: false, x: 0, y: 0 };
+        let lookJoystick = { active: false, x: 0, y: 0 };
+        let spider, legs = [], bodyGroup;
+        let projectiles = [];
+        let enemies = [];
+        let moveSpeed = 0.15;
+        let lookSensitivity = 0.002;
+        let playerRotation = { x: 0, y: 0 };
+        let isFiring = false;
+        let lastFireTime = 0;
+
+        const startBtn = document.getElementById('start-btn');
+        const overlay = document.getElementById('overlay');
+
+        // --- Initialization ---
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020205);
+            scene.fog = new THREE.FogExp2(0x020205, 0.05);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // Lighting
+            const ambient = new THREE.AmbientLight(0x404040, 0.5);
+            scene.add(ambient);
+
+            const sun = new THREE.DirectionalLight(0x4444ff, 1.2);
+            sun.position.set(10, 20, 10);
+            sun.castShadow = true;
+            sun.shadow.camera.left = -50;
+            sun.shadow.camera.right = 50;
+            sun.shadow.camera.top = 50;
+            sun.shadow.camera.bottom = -50;
+            scene.add(sun);
+
+            // Floor
+            const floorGeo = new THREE.PlaneGeometry(200, 200);
+            const floorMat = new THREE.MeshStandardMaterial({ 
+                color: 0x111111, 
+                roughness: 0.2, 
+                metalness: 0.8 
+            });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Grid helper for tech feel
+            const grid = new THREE.GridHelper(200, 40, 0x00ffff, 0x222222);
+            scene.add(grid);
+
+            createSpider();
+            createEnvironment();
+            setupControls();
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        function createSpider() {
+            bodyGroup = new THREE.Group();
+            
+            // Central Chassis
+            const bodyGeo = new THREE.IcosahedronGeometry(0.6, 1);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9, roughness: 0.1 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.castShadow = true;
+            bodyGroup.add(body);
+
+            // Eye/Camera
+            const eyeGeo = new THREE.SphereGeometry(0.15, 16, 16);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+            const eye = new THREE.Mesh(eyeGeo, eyeMat);
+            eye.position.set(0, 0.2, -0.5);
+            bodyGroup.add(eye);
+
+            // Gun
+            const gunGeo = new THREE.CylinderGeometry(0.05, 0.08, 0.6);
+            const gunMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+            const gun = new THREE.Mesh(gunGeo, gunMat);
+            gun.rotation.x = -Math.PI / 2;
+            gun.position.set(0, -0.2, -0.7);
+            bodyGroup.add(gun);
+
+            // Legs
+            const legMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 1, roughness: 0.2 });
+            for (let i = 0; i < 6; i++) {
+                const angle = (i / 6) * Math.PI * 2;
+                const legJoint = new THREE.Group();
+                
+                // Thigh
+                const thighGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.8);
+                const thigh = new THREE.Mesh(thighGeo, legMat);
+                thigh.position.y = 0.4;
+                thigh.rotation.z = Math.PI / 3;
+                
+                // Calf
+                const calfGeo = new THREE.CylinderGeometry(0.04, 0.02, 1);
+                const calf = new THREE.Mesh(calfGeo, legMat);
+                calf.position.set(0.6, 0.7, 0);
+                calf.rotation.z = -Math.PI / 4;
+                
+                legJoint.add(thigh);
+                thigh.add(calf);
+                
+                legJoint.rotation.y = angle;
+                bodyGroup.add(legJoint);
+                legs.push({ joint: legJoint, thigh, calf, angle });
+            }
+
+            scene.add(bodyGroup);
+            bodyGroup.position.y = 1.2;
+            
+            // Attach camera to spider but with offset
+            bodyGroup.add(camera);
+            camera.position.set(0, 0.8, 0.5);
+        }
+
+        function createEnvironment() {
+            // Pillars / Obstacles
+            for(let i=0; i<20; i++) {
+                const h = Math.random() * 10 + 2;
+                const geo = new THREE.BoxGeometry(2, h, 2);
+                const mat = new THREE.MeshStandardMaterial({ 
+                    color: 0x1a1a1a, 
+                    metalness: 0.8, 
+                    roughness: 0.2,
+                    emissive: 0x001111,
+                    emissiveIntensity: 0.5
+                });
+                const pillar = new THREE.Mesh(geo, mat);
+                pillar.position.set(
+                    (Math.random() - 0.5) * 80,
+                    h/2,
+                    (Math.random() - 0.5) * 80
+                );
+                pillar.castShadow = true;
+                pillar.receiveShadow = true;
+                scene.add(pillar);
+            }
+
+            // Simple Drone Enemies
+            for(let i=0; i<8; i++) {
+                spawnEnemy();
+            }
+        }
+
+        function spawnEnemy() {
+            const geo = new THREE.OctahedronGeometry(0.5);
+            const mat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000 });
+            const enemy = new THREE.Mesh(geo, mat);
+            enemy.position.set(
+                (Math.random() - 0.5) * 100,
+                2 + Math.random() * 5,
+                (Math.random() - 0.5) * 100
+            );
+            enemy.userData = { 
+                velocity: new THREE.Vector3((Math.random()-0.5)*0.1, 0, (Math.random()-0.5)*0.1),
+                health: 1 
+            };
+            scene.add(enemy);
+            enemies.push(enemy);
+        }
+
+        function setupControls() {
+            const moveKnob = document.getElementById('move-knob');
+            const lookKnob = document.getElementById('look-knob');
+            const fireBtn = document.getElementById('fire-btn');
+
+            const handleJoystick = (e, knob, state) => {
+                const touch = e.touches[0];
+                const rect = knob.parentElement.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                
+                let dx = touch.clientX - centerX;
+                let dy = touch.clientY - centerY;
+                const dist = Math.min(60, Math.sqrt(dx*dx + dy*dy));
+                const angle = Math.atan2(dy, dx);
+                
+                state.x = (Math.cos(angle) * dist) / 60;
+                state.y = (Math.sin(angle) * dist) / 60;
+                
+                knob.style.transform = `translate(calc(-50% + ${Math.cos(angle) * dist}px), calc(-50% + ${Math.sin(angle) * dist}px))`;
+            };
+
+            document.getElementById('move-joystick').addEventListener('touchstart', (e) => moveJoystick.active = true);
+            document.getElementById('move-joystick').addEventListener('touchmove', (e) => {
+                if(moveJoystick.active) handleJoystick(e, moveKnob, moveJoystick);
+            });
+            document.getElementById('move-joystick').addEventListener('touchend', () => {
+                moveJoystick.active = false;
+                moveJoystick.x = 0; moveJoystick.y = 0;
+                moveKnob.style.transform = 'translate(-50%, -50%)';
+            });
+
+            document.getElementById('look-joystick').addEventListener('touchstart', (e) => lookJoystick.active = true);
+            document.getElementById('look-joystick').addEventListener('touchmove', (e) => {
+                if(lookJoystick.active) handleJoystick(e, lookKnob, lookJoystick);
+            });
+            document.getElementById('look-joystick').addEventListener('touchend', () => {
+                lookJoystick.active = false;
+                lookJoystick.x = 0; lookJoystick.y = 0;
+                lookKnob.style.transform = 'translate(-50%, -50%)';
+            });
+
+            fireBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isFiring = true; });
+            fireBtn.addEventListener('touchend', () => isFiring = false);
+            
+            // For Desktop Debugging
+            window.addEventListener('mousedown', () => { if(overlay.style.display === 'none') isFiring = true; });
+            window.addEventListener('mouseup', () => isFiring = false);
+        }
+
+        function shoot() {
+            const now = Date.now();
+            if (now - lastFireTime < 150) return;
+            lastFireTime = now;
+
+            const geo = new THREE.SphereGeometry(0.05, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+            const bullet = new THREE.Mesh(geo, mat);
+            
+            // Position at gun tip
+            const dir = new THREE.Vector3(0, 0, -1);
+            dir.applyQuaternion(bodyGroup.quaternion);
+            
+            bullet.position.copy(bodyGroup.position);
+            bullet.position.y -= 0.2;
+            bullet.userData.velocity = dir.multiplyScalar(1.5);
+            bullet.userData.life = 100;
+            
+            scene.add(bullet);
+            projectiles.push(bullet);
+
+            // Muzzle flash light
+            const light = new THREE.PointLight(0x00ffff, 10, 5);
+            light.position.copy(bullet.position);
+            scene.add(light);
+            setTimeout(() => scene.remove(light), 50);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getElapsedTime();
+
+            // Movement Logic
+            if (moveJoystick.active || Math.abs(moveJoystick.x) > 0.1) {
+                const moveX = moveJoystick.x * moveSpeed;
+                const moveZ = moveJoystick.y * moveSpeed;
+                
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(bodyGroup.quaternion);
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(bodyGroup.quaternion);
+                
+                bodyGroup.position.add(forward.multiplyScalar(-moveZ));
+                bodyGroup.position.add(right.multiplyScalar(moveX));
+
+                // Leg Animation
+                legs.forEach((leg, i) => {
+                    const phase = delta * 12 + (i * Math.PI / 3);
+                    leg.joint.rotation.z = Math.sin(phase) * 0.4;
+                    leg.thigh.rotation.x = Math.cos(phase) * 0.2;
+                });
+                
+                // Body bobbing
+                bodyGroup.position.y = 1.2 + Math.sin(delta * 15) * 0.05;
+            } else {
+                // Settle legs
+                legs.forEach((leg) => {
+                    leg.joint.rotation.z *= 0.9;
+                });
+            }
+
+            // Look Logic
+            if (lookJoystick.active) {
+                playerRotation.y -= lookJoystick.x * 35 * lookSensitivity;
+                playerRotation.x -= lookJoystick.y * 20 * lookSensitivity;
+                playerRotation.x = Math.max(-0.5, Math.min(0.5, playerRotation.x));
+                
+                bodyGroup.rotation.y = playerRotation.y;
+                // Tilt body slightly when looking up/down
+                bodyGroup.rotation.x = playerRotation.x * 0.2;
+            }
+
+            if (isFiring) shoot();
+
+            // Update Projectiles
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const b = projectiles[i];
+                b.position.add(b.userData.velocity);
+                b.userData.life--;
+
+                // Collision with enemies
+                enemies.forEach((enemy, eIdx) => {
+                    if (b.position.distanceTo(enemy.position) < 1) {
+                        scene.remove(enemy);
+                        enemies.splice(eIdx, 1);
+                        b.userData.life = 0;
+                        spawnEnemy(); // Keep the action going
+                    }
+                });
+
+                if (b.userData.life <= 0) {
+                    scene.remove(b);
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            // Update Enemies
+            enemies.forEach(enemy => {
+                enemy.position.add(enemy.userData.velocity);
+                if (Math.abs(enemy.position.x) > 50) enemy.userData.velocity.x *= -1;
+                if (Math.abs(enemy.position.z) > 50) enemy.userData.velocity.z *= -1;
+                enemy.rotation.y += 0.05;
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        startBtn.addEventListener('click', () => {
+            overlay.style.display = 'none';
+            init();
+        });
+
+    </script>
+</body>
+</html>
+
+<!--
+Features implemented:
+1. Three.js PBR rendering with shadows and fog for "photo realism" vibe.
+2. Custom virtual joystick system optimized for Android/iOS touches.
+3. Procedural Spider Unit: 6-legged robot with synchronized gait animation.
+4. FPS Combat: Projectile system with muzzle flashes and hit detection.
+5. Dynamic Environment: Glowing pillars and floating drone enemies.
+6. Mobile Responsive: Handles resizing and high DPI screens.
+-->

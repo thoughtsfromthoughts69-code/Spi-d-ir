@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AETHER-STRIKE | Autonomous Pinpoint Spider-Bot</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Rajdhani:wght@400;600;700&display=swap');
+        
+        * {
+            touch-action: none; /* Prevents default browser zooming and scrolling on mobile joysticks */
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #030708;
+            font-family: 'Rajdhani', sans-serif;
+            color: #a0fcfc;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        canvas { display: block; width: 100vw; height: 100vh; }
+
+        /* HUD Styling */
+        .hud-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            border: 12px solid rgba(0, 240, 255, 0.08);
+            box-sizing: border-box;
+            z-index: 10;
+        }
+
+        .scanner-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(to right, transparent, rgba(0, 240, 255, 0.6), transparent);
+            top: 0;
+            animation: scan 4s linear infinite;
+        }
+
+        @keyframes scan {
+            0% { top: 0%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
+        }
+
+        .panel-bg {
+            background: rgba(6, 16, 22, 0.82);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.1);
+        }
+
+        .btn-interact {
+            pointer-events: auto;
+            transition: all 0.2s ease;
+            clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%);
+            touch-action: manipulation;
+        }
+
+        .btn-interact:hover, .btn-interact:active {
+            background: rgba(0, 240, 255, 0.3);
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.6);
+            transform: scale(1.02);
+        }
+
+        /* Target HUD marker projecting 3D point to 2D Screen */
+        #target-hud-marker {
+            position: absolute;
+            width: 44px;
+            height: 44px;
+            border: 2px solid #00f0ff;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            transition: opacity 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #target-hud-marker::before, #target-hud-marker::after {
+            content: '';
+            position: absolute;
+            background-color: #00f0ff;
+        }
+        #target-hud-marker::before { width: 100%; height: 1px; }
+        #target-hud-marker::after { width: 1px; height: 100%; }
+
+        /* Touch Joystick Container Styling */
+        .joystick-zone {
+            position: absolute;
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            background: rgba(0, 240, 255, 0.05);
+            border: 2px solid rgba(0, 240, 255, 0.25);
+            pointer-events: auto;
+            touch-action: none;
+            backdrop-filter: blur(4px);
+        }
+
+        .joystick-knob {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0, 240, 255, 0.8) 0%, rgba(0, 150, 200, 0.4) 100%);
+            border: 2px solid #a0fcfc;
+            box-shadow: 0 0 12px rgba(0, 240, 255, 0.6);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="hud-overlay">
+    <div class="scanner-line"></div>
+    
+    <!-- Top Header -->
+    <div class="absolute top-4 left-4 md:top-8 md:left-8 flex items-center gap-3">
+        <div class="w-2 h-10 md:h-12 bg-cyan-400 shadow-[0_0_10px_#00f0ff]"></div>
+        <div>
+            <h1 class="text-xl md:text-3xl font-bold font-orbitron tracking-tighter text-white">AETHER-STRIKE <span class="font-light text-cyan-400">| PINPOINT SPIDER</span></h1>
+            <p class="text-[10px] md:text-xs uppercase tracking-widest text-cyan-400 opacity-80">AI-AIPU: Autonomous Blue Laser Target Unit</p>
+        </div>
+    </div>
+
+    <!-- Specifications Panel -->
+    <div class="hidden md:flex absolute top-8 right-8 w-64 panel-bg p-4 flex-col gap-3 rounded-lg">
+        <div class="border-b border-cyan-800/80 pb-2 flex justify-between items-center">
+            <h2 class="text-sm font-orbitron text-white font-bold tracking-wider">SYSTEM SPEC</h2>
+            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="w-7 h-7 flex items-center justify-center border border-cyan-400/60 rounded">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20m-17-7 14 14M5 19 19 5" /></svg>
+            </div>
+            <div>
+                <p class="text-[9px] uppercase text-cyan-400 font-semibold">Laser Beam</p>
+                <p class="text-xs font-bold text-white">450nm Cyan Pinpoint</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="w-7 h-7 flex items-center justify-center border border-cyan-400/60 rounded">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="2" /><path d="M12 3v2m0 14v2m9-9h-2M5 12H3" /></svg>
+            </div>
+            <div>
+                <p class="text-[9px] uppercase text-cyan-400 font-semibold">Target System</p>
+                <p class="text-xs font-bold text-white" id="target-mode-status">AUTONOMOUS LOCK-ON</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="w-7 h-7 flex items-center justify-center border border-cyan-400/60 rounded">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+            </div>
+            <div>
+                <p class="text-[9px] uppercase text-cyan-400 font-semibold">Stealth Coating</p>
+                <p class="text-xs font-bold text-white" id="stealth-status">OFF (ACTIVE)</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Target HUD Tracking Frame Overlay -->
+    <div idtarget="target-hud-marker" id="target-hud-marker" class="opacity-0">
+        <span class="absolute -top-4 text-[9px] font-mono font-bold text-cyan-300 tracking-wider whitespace-nowrap" id="hud-target-distance">LOCKED: 12.4m</span>
+    </div>
+
+    <!-- Bottom Telemetry Teleport Data -->
+    <div class="absolute bottom-24 left-4 md:bottom-8 md:left-8 flex flex-col gap-1">
+        <div class="flex items-end gap-1 mb-1">
+            <div class="w-1 bg-cyan-400 h-3 animate-pulse"></div>
+            <div class="w-1 bg-cyan-400 h-5"></div>
+            <div class="w-1 bg-cyan-400 h-2"></div>
+            <div class="w-1 bg-cyan-400 h-6"></div>
+            <div class="w-1 bg-white h-4"></div>
+        </div>
+        <p class="text-[10px] md:text-xs font-mono tracking-tighter text-cyan-300">
+            TARGET COORD: <span id="target-coords-ui">X: 0.00 Y: 1.50 Z: 0.00</span>
+        </p>
+        <p class="text-[9px] font-mono text-cyan-500 uppercase">ANDROID DUAL JOYSTICK & TOUCH READY</p>
+    </div>
+
+    <!-- Controls Panel -->
+    <div class="absolute top-16 right-4 md:top-auto md:bottom-8 md:right-8 flex flex-col items-end gap-2">
+        <div class="text-right hidden md:block mb-2">
+            <h3 class="text-2xl font-orbitron font-bold text-white">STLTH-SYS v2.5</h3>
+            <p class="text-[10px] text-cyan-400 opacity-80 uppercase">Tactical Targeting Interface</p>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-2">
+            <button onclick="engine.toggleAutoTarget()" id="btn-autotarget" class="btn-interact px-4 py-2 bg-cyan-950/80 text-white text-xs font-bold tracking-widest uppercase border border-cyan-400/60 rounded">
+                Target: AUTO
+            </button>
+            <button onclick="engine.toggleLaser()" id="btn-laser" class="btn-interact px-4 py-2 bg-cyan-500/20 text-cyan-300 text-xs font-bold tracking-widest uppercase border border-cyan-400 rounded shadow-[0_0_10px_rgba(0,240,255,0.3)]">
+                Laser: ON
+            </button>
+            <button onclick="engine.toggleStealth()" class="btn-interact px-4 py-2 bg-cyan-950/80 text-white text-xs font-bold tracking-widest uppercase border border-cyan-400/60 rounded">
+                Stealth
+            </button>
+        </div>
+    </div>
+
+    <!-- On-Screen Virtual Joysticks for Android / Mobile Touch Controls -->
+    <div class="absolute bottom-6 left-6 joystick-zone" id="joystick-left">
+        <div class="joystick-knob" id="knob-left"></div>
+        <span class="absolute -bottom-5 w-full text-center text-[9px] font-bold font-mono text-cyan-400/80 uppercase">MOVE</span>
+    </div>
+
+    <div class="absolute bottom-6 right-6 joystick-zone" id="joystick-right">
+        <div class="joystick-knob" id="knob-right"></div>
+        <span class="absolute -bottom-5 w-full text-center text-[9px] font-bold font-mono text-cyan-400/80 uppercase">CAMERA / AIM</span>
+    </div>
+</div>
+
+<script>
+class AudioManager {
+    constructor() {
+        this.ctx = null;
+        this.humStarted = false;
+    }
+
+    init() {
+        if (!this.ctx) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    playTone(freq, type, duration, vol) {
+        if (!this.ctx) return;
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+        gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + duration);
+    }
+
+    playClick() {
+        this.playTone(900, 'square', 0.08, 0.04);
+        this.playTone(450, 'square', 0.04, 0.04);
+    }
+
+    playHum() {
+        if (!this.ctx || this.humStarted) return;
+        this.humStarted = true;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(55, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.015, this.ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+    }
+
+    playLockBeep() {
+        this.playTone(1800, 'sine', 0.08, 0.05);
+        setTimeout(() => this.playTone(2200, 'sine', 0.1, 0.05), 90);
+    }
+}
+
+class TextureGenerator {
+    static carbonFiber() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#0f1416';
+        ctx.fillRect(0, 0, 64, 64);
+        ctx.fillStyle = '#1c2428';
+        for (let y = 0; y < 64; y += 4) {
+            for (let x = 0; x < 64; x += 4) {
+                if ((x + y) % 8 === 0) {
+                    ctx.fillRect(x, y, 2, 2);
+                }
+            }
+        }
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(4, 4);
+        return tex;
+    }
+
+    static floorGrid() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#03080a';
+        ctx.fillRect(0, 0, 512, 512);
+        
+        ctx.strokeStyle = '#0a2a30';
+        ctx.lineWidth = 1.5;
+        for(let i = 0; i <= 512; i += 32) {
+            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 512); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(512, i); ctx.stroke();
+        }
+
+        ctx.strokeStyle = '#00f0ff';
+        ctx.globalAlpha = 0.25;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(2, 2, 508, 508);
+        
+        ctx.globalAlpha = 0.15;
+        for(let j = 0; j < 6; j++) {
+            let x = (j * 85) % 512, y = (j * 110) % 512;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + 40, y);
+            ctx.lineTo(x + 40, y + 40);
+            ctx.stroke();
+        }
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(16, 16);
+        return tex;
+    }
+}
+
+class JoystickController {
+    constructor(zoneId, knobId) {
+        this.zone = document.getElementById(zoneId);
+        this.knob = document.getElementById(knobId);
+        this.vector = { x: 0, y: 0 };
+        this.active = false;
+        this.touchId = null;
+
+        this.init();
+    }
+
+    init() {
+        const handleStart = (clientX, clientY, identifier = null) => {
+            this.active = true;
+            this.touchId = identifier;
+            this.updatePosition(clientX, clientY);
+        };
+
+        const handleMove = (clientX, clientY) => {
+            if (!this.active) return;
+            this.updatePosition(clientX, clientY);
+        };
+
+        const handleEnd = () => {
+            this.active = false;
+            this.touchId = null;
+            this.vector = { x: 0, y: 0 };
+            this.knob.style.transform = `translate(-50%, -50%)`;
+        };
+
+        // Touch Listeners
+        this.zone.addEventListener('touchstart', (e) => {
+            const touch = e.changedTouches[0];
+            handleStart(touch.clientX, touch.clientY, touch.identifier);
+            e.preventDefault();
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!this.active) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === this.touchId) {
+                    handleMove(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+                    break;
+                }
+            }
+        }, { passive: false });
+
+        window.addEventListener('touchend', (e) => {
+            if (!this.active) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === this.touchId) {
+                    handleEnd();
+                    break;
+                }
+            }
+        });
+
+        // Mouse Fallback for Desktop testing on joystick
+        this.zone.addEventListener('mousedown', (e) => {
+            handleStart(e.clientX, e.clientY);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (this.active && this.touchId === null) {
+                handleMove(e.clientX, e.clientY);
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (this.active && this.touchId === null) {
+                handleEnd();
+            }
+        });
+    }
+
+    updatePosition(clientX, clientY) {
+        const rect = this.zone.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        let deltaX = clientX - centerX;
+        let deltaY = clientY - centerY;
+        const maxRadius = rect.width / 2;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+        if (distance > maxRadius) {
+            deltaX = (deltaX / distance) * maxRadius;
+            deltaY = (deltaY / distance) * maxRadius;
+        }
+
+        this.knob.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
+        this.vector.x = deltaX / maxRadius;
+        this.vector.y = deltaY / maxRadius;
+    }
+}
+
+class AutonomousTarget {
+    constructor(scene) {
+        this.scene = scene;
+        this.group = new THREE.Group();
+        
+        // Target Sphere core
+        const coreGeo = new THREE.SphereGeometry(0.35, 16, 16);
+        const coreMat = new THREE.MeshStandardMaterial({ 
+            color: 0x00f0ff, 
+            emissive: 0x00a8ff, 
+            emissiveIntensity: 0.8,
+            roughness: 0.2 
+        });
+        this.core = new THREE.Mesh(coreGeo, coreMat);
+        this.group.add(this.core);
+
+        // Rotating outer ring
+        const ringGeo = new THREE.TorusGeometry(0.6, 0.03, 8, 24);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true });
+        this.ring = new THREE.Mesh(ringGeo, ringMat);
+        this.group.add(this.ring);
+
+        // Point Light attached to target
+        this.light = new THREE.PointLight(0x00f0ff, 1.5, 6);
+        this.group.add(this.light);
+
+        this.scene.add(this.group);
+        this.position = this.group.position;
+        this.position.set(0, 1.8, -6);
+
+        this.timeOffset = Math.random() * 100;
+    }
+
+    update(time) {
+        // Smooth 3D Waypoint/Lissajous flight pattern
+        const t = time * 0.8 + this.timeOffset;
+        this.position.x = Math.sin(t * 0.9) * 4.5;
+        this.position.y = 1.4 + Math.sin(t * 1.5) * 0.8;
+        this.position.z = Math.cos(t * 0.7) * 4.5 - 2;
+
+        this.ring.rotation.x = t * 2;
+        this.ring.rotation.y = t * 1.5;
+    }
+}
+
+class BlueLaserSystem {
+    constructor(scene) {
+        this.scene = scene;
+        this.enabled = true;
+
+        // Core laser cylinder line
+        const geom = new THREE.CylinderGeometry(0.025, 0.025, 1, 8);
+        geom.rotateX(Math.PI / 2);
+        geom.translate(0, 0, 0.5); // Origin at back end
+
+        const mat = new THREE.MeshBasicMaterial({ 
+            color: 0x0047AB, 
+            transparent: true, 
+            opacity: 0.95 
+        });
+        this.beam = new THREE.Mesh(geom, mat);
+
+        // Outer cobalt Glow Beam
+        const glowGeom = new THREE.CylinderGeometry(0.08, 0.08, 1, 8);
+        glowGeom.rotateX(Math.PI / 2);
+        glowGeom.translate(0, 0, 0.5);
+
+        const glowMat = new THREE.MeshBasicMaterial({ 
+            color: 0x0047AB, 
+            transparent: true, 
+            opacity: 0.45,
+            blending: THREE.AdditiveBlending 
+        });
+        this.glowBeam = new THREE.Mesh(glowGeom, glowMat);
+        this.beam.add(this.glowBeam);
+
+        // Laser Impact Point Flare Particles
+        const particleCount = 50;
+        const pGeom = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        for(let i=0; i<particleCount*3; i++) positions[i] = (Math.random() - 0.5) * 0.3;
+        pGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const pMat = new THREE.PointsMaterial({
+            color: 0x0047AB,
+            size: 0.008,
+            transparent: true,
+            blending: THREE.AdditiveBlending
+        });
+        this.impactParticles = new THREE.Points(pGeom, pMat);
+
+        this.scene.add(this.beam);
+        this.scene.add(this.impactParticles);
+    }
+
+    update(startVec, targetVec) {
+        if (!this.enabled) {
+            this.beam.visible = false;
+            this.impactParticles.visible = false;
+            return;
+        }
+
+        this.beam.visible = true;
+        this.impactParticles.visible = true;
+
+        // Orient laser beam from start point to target point
+        this.beam.position.copy(startVec);
+        this.beam.lookAt(targetVec);
+
+        const distance = startVec.distanceTo(targetVec);
+        this.beam.scale.set(1, 1, distance);
+
+        // Place impact particle splash at laser destination
+        this.impactParticles.position.copy(targetVec);
+        this.impactParticles.rotation.y += 0.1;
+    }
+}
+
+class SpiderBot {
+    constructor(scene) {
+        this.scene = scene;
+        this.group = new THREE.Group();
+        this.stealthMode = false;
+
+        this.materials = {
+            main: new THREE.MeshPhongMaterial({ 
+                color: 0x182024, 
+                specular: 0x00f0ff, 
+                shininess: 90, 
+                map: TextureGenerator.carbonFiber() 
+            }),
+            joint: new THREE.MeshPhongMaterial({ color: 0x3a4850, shininess: 60 }),
+            glow: new THREE.MeshBasicMaterial({ color: 0x00f0ff }),
+            lens: new THREE.MeshPhongMaterial({ color: 0x002233, shininess: 200, specular: 0xffffff })
+        };
+
+        this.init();
+        this.scene.add(this.group);
+    }
+
+    init() {
+        // Main Body (Torso)
+        const torsoGeom = new THREE.BoxGeometry(1.2, 0.6, 1.4);
+        const pos = torsoGeom.attributes.position;
+        for(let i=0; i<pos.count; i++) {
+            if(pos.getZ(i) > 0) {
+                pos.setX(i, pos.getX(i) * 0.7);
+                pos.setY(i, pos.getY(i) * 0.8);
+            }
+        }
+        this.torso = new THREE.Mesh(torsoGeom, this.materials.main);
+        this.torso.position.y = 0.8;
+        this.group.add(this.torso);
+
+        // Neck
+        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 0.2), this.materials.joint);
+        neck.position.set(0, 0.35, 0.5);
+        this.torso.add(neck);
+
+        // Head / Turret
+        const headGeom = new THREE.BoxGeometry(0.8, 0.5, 1.0);
+        const hPos = headGeom.attributes.position;
+        for(let i=0; i<hPos.count; i++) {
+            if(hPos.getZ(i) < 0) {
+                hPos.setX(i, hPos.getX(i) * 0.6);
+                hPos.setY(i, hPos.getY(i) * 0.5);
+            }
+        }
+        this.head = new THREE.Mesh(headGeom, this.materials.main);
+        this.head.position.set(0, 0.25, 0.2);
+        neck.add(this.head);
+
+        // Blue Laser Emitter Lens Eye
+        const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.1, 16), this.materials.lens);
+        lens.rotation.x = Math.PI / 2;
+        lens.position.set(0, 0, 0.52);
+        this.head.add(lens);
+
+        // Eye Light Glow
+        this.eyeGlow = new THREE.PointLight(0x00f0ff, 2, 3);
+        this.eyeGlow.position.set(0, 0, 0.6);
+        this.head.add(this.eyeGlow);
+
+        // Legs Config
+        this.legs = [];
+        const legConfigs = [
+            { x: 0.7, z: 0.5, ry: Math.PI / 4 },
+            { x: -0.7, z: 0.5, ry: -Math.PI / 4 },
+            { x: 0.7, z: -0.5, ry: 3 * Math.PI / 4 },
+            { x: -0.7, z: -0.5, ry: -3 * Math.PI / 4 }
+        ];
+
+        legConfigs.forEach(conf => {
+            const leg = this.createLeg();
+            leg.position.set(conf.x, 0.1, conf.z);
+            leg.rotation.y = conf.ry;
+            this.torso.add(leg);
+            this.legs.push(leg);
+        });
+    }
+
+    createLeg() {
+        const group = new THREE.Group();
+        
+        // Coxa Joint
+        const coxa = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), this.materials.joint);
+        group.add(coxa);
+
+        // Femur Upper Leg
+        const femur = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 1.2), this.materials.main);
+        femur.rotation.x = Math.PI / 3;
+        femur.position.set(0, 0.4, 0.4);
+        coxa.add(femur);
+
+        // Tibia Lower Leg
+        const tibia = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.02, 1.5), this.materials.main);
+        tibia.position.set(0, 0.5, 0.6);
+        tibia.rotation.x = -Math.PI / 1.5;
+        femur.add(tibia);
+
+        return group;
+    }
+
+    getLaserEmitterWorldPosition() {
+        const worldVec = new THREE.Vector3();
+        this.head.getWorldPosition(worldVec);
+        worldVec.y += 0.05;
+        return worldVec;
+    }
+
+    update(time, isMoving, moveVec) {
+        // Walking or Breathing animation
+        const speedMultiplier = isMoving ? 12 : 2.5;
+        this.torso.position.y = 0.8 + Math.sin(time * speedMultiplier) * (isMoving ? 0.08 : 0.03);
+
+        this.legs.forEach((leg, i) => {
+            const offset = i * Math.PI / 2;
+            if (isMoving) {
+                leg.rotation.z = Math.sin(time * 12 + offset) * 0.25;
+                leg.rotation.x = Math.cos(time * 12 + offset) * 0.2;
+            } else {
+                leg.rotation.z = Math.sin(time * 2 + offset) * 0.08;
+                leg.rotation.x = Math.cos(time * 2 + offset) * 0.04;
+            }
+        });
+    }
+
+    setStealth(val) {
+        this.stealthMode = val;
+        const targetOpacity = val ? 0.18 : 1.0;
+        this.materials.main.transparent = true;
+        this.materials.main.opacity = targetOpacity;
+        this.materials.joint.transparent = true;
+        this.materials.joint.opacity = targetOpacity;
+        this.materials.glow.color.setHex(val ? 0xff0044 : 0x00f0ff);
+        this.eyeGlow.color.setHex(val ? 0xff0044 : 0x00f0ff);
+    }
+}
+
+class Engine {
+    constructor() {
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        this.audio = new AudioManager();
+        this.clock = new THREE.Clock();
+        
+        this.autoTargetMode = true;
+        
+        this.init();
+    }
+
+    init() {
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setClearColor(0x030708);
+        this.renderer.shadowMap.enabled = true;
+        document.body.appendChild(this.renderer.domElement);
+
+        // Joysticks Initialization
+        this.joyLeft = new JoystickController('joystick-left', 'knob-left');
+        this.joyRight = new JoystickController('joystick-right', 'knob-right');
+
+        // Lighting
+        const ambLight = new THREE.AmbientLight(0x203540, 0.8);
+        this.scene.add(ambLight);
+
+        const dirLight = new THREE.DirectionalLight(0x00f0ff, 0.9);
+        dirLight.position.set(10, 20, 10);
+        this.scene.add(dirLight);
+
+        const rimLight = new THREE.PointLight(0x0088ff, 0.6);
+        rimLight.position.set(-10, 5, -10);
+        this.scene.add(rimLight);
+
+        // Floor Grid
+        const floorGeom = new THREE.PlaneGeometry(120, 120);
+        const floorMat = new THREE.MeshPhongMaterial({ 
+            map: TextureGenerator.floorGrid(),
+            transparent: true,
+            opacity: 0.85
+        });
+        const floor = new THREE.Mesh(floorGeom, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        this.scene.add(floor);
+
+        this.scene.fog = new THREE.FogExp2(0x030708, 0.05);
+
+        // Scene Entities
+        this.bot = new SpiderBot(this.scene);
+        this.target = new AutonomousTarget(this.scene);
+        this.laser = new BlueLaserSystem(this.scene);
+
+        // Camera setup
+        this.cameraAngleY = 0;
+        this.cameraAngleX = 0.35;
+        this.cameraDistance = 8.5;
+
+        // Window resize event
+        window.addEventListener('resize', () => this.onWindowResize());
+
+        // Keyboard Backup Controls (WASD / Arrows)
+        this.keys = {};
+        window.addEventListener('keydown', (e) => { this.keys[e.code] = true; });
+        window.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
+
+        this.animate();
+    }
+
+    onWindowResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    toggleAutoTarget() {
+        this.audio.playClick();
+        this.autoTargetMode = !this.autoTargetMode;
+        document.getElementById('btn-autotarget').innerText = `Target: ${this.autoTargetMode ? 'AUTO' : 'MANUAL'}`;
+        document.getElementById('target-mode-status').innerText = this.autoTargetMode ? 'AUTONOMOUS LOCK-ON' : 'MANUAL OVERRIDE';
+    }
+
+    toggleLaser() {
+        this.audio.playClick();
+        this.laser.enabled = !this.laser.enabled;
+        const btn = document.getElementById('btn-laser');
+        btn.innerText = `Laser: ${this.laser.enabled ? 'ON' : 'OFF'}`;
+        btn.className = this.laser.enabled 
+            ? "btn-interact px-4 py-2 bg-cyan-500/20 text-cyan-300 text-xs font-bold tracking-widest uppercase border border-cyan-400 rounded shadow-[0_0_10px_rgba(0,240,255,0.3)]"
+            : "btn-interact px-4 py-2 bg-cyan-950/40 text-gray-400 text-xs font-bold tracking-widest uppercase border border-gray-600 rounded";
+    }
+
+    toggleStealth() {
+        this.audio.playClick();
+        this.bot.setStealth(!this.bot.stealthMode);
+        document.getElementById('stealth-status').innerText = this.bot.stealthMode ? 'ON (INVIS)' : 'OFF (ACTIVE)';
+    }
+
+    animate() {
+        requestAnimationFrame(() => this.animate());
+
+        const delta = this.clock.getDelta();
+        const time = this.clock.getElapsedTime();
+
+        // Update Target drone movement
+        this.target.update(time);
+
+        // Read Movement Input (Touch Joystick Left + WASD Keyboard)
+        let moveX = this.joyLeft.vector.x;
+        let moveZ = this.joyLeft.vector.y;
+
+        if (this.keys['KeyA'] || this.keys['ArrowLeft']) moveX = -1;
+        if (this.keys['KeyD'] || this.keys['ArrowRight']) moveX = 1;
+        if (this.keys['KeyW'] || this.keys['ArrowUp']) moveZ = -1;
+        if (this.keys['KeyS'] || this.keys['ArrowDown']) moveZ = 1;
+
+        const isMoving = Math.abs(moveX) > 0.1 || Math.abs(moveZ) > 0.1;
+
+        if (isMoving) {
+            const moveSpeed = 4.5 * delta;
+            // Align movement with current camera orientation
+            const moveAngle = Math.atan2(moveX, moveZ) + this.cameraAngleY;
+            this.bot.group.position.x += Math.sin(moveAngle) * moveSpeed;
+            this.bot.group.position.z += Math.cos(moveAngle) * moveSpeed;
+
+            // Rotate spider body towards movement direction smoothly
+            const targetRotation = moveAngle;
+            let diff = targetRotation - this.bot.group.rotation.y;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            this.bot.group.rotation.y += diff * 0.15;
+        }
+
+        this.bot.update(time, isMoving, { x: moveX, y: moveZ });
+
+        // Read Camera/Aim Joystick Input (Right Joystick)
+        if (Math.abs(this.joyRight.vector.x) > 0.05) {
+            this.cameraAngleY -= this.joyRight.vector.x * 2.0 * delta;
+        }
+        if (Math.abs(this.joyRight.vector.y) > 0.05) {
+            this.cameraAngleX = Math.max(0.1, Math.min(1.2, this.cameraAngleX + this.joyRight.vector.y * 1.5 * delta));
+        }
+
+        // Spider Head Targeting logic
+        const laserStartPoint = this.bot.getLaserEmitterWorldPosition();
+        let currentTargetPoint = this.target.position.clone();
+
+        if (this.autoTargetMode) {
+            // Autonomous lock-on head tracking
+            this.bot.head.lookAt(currentTargetPoint);
+        } else {
+            // Manual head aiming based on spider orientation
+            this.bot.head.rotation.set(0, Math.sin(time * 0.5) * 0.4, 0);
+            const forwardDir = new THREE.Vector3(0, 0, 10).applyQuaternion(this.bot.head.quaternion);
+            currentTargetPoint = laserStartPoint.clone().add(forwardDir);
+        }
+
+        // Update Laser Beam System
+        this.laser.update(laserStartPoint, currentTargetPoint);
+
+        // Orbital Third-Person Camera Follow
+        const camX = this.bot.group.position.x + Math.sin(this.cameraAngleY) * this.cameraDistance * Math.cos(this.cameraAngleX);
+        const camY = this.bot.group.position.y + Math.sin(this.cameraAngleX) * this.cameraDistance + 1.2;
+        const camZ = this.bot.group.position.z + Math.cos(this.cameraAngleY) * this.cameraDistance * Math.cos(this.cameraAngleX);
+
+        this.camera.position.set(camX, camY, camZ);
+        this.camera.lookAt(this.bot.group.position.x, this.bot.group.position.y + 0.8, this.bot.group.position.z);
+
+        // Update HUD Reticle Projection to 2D Screen
+        this.updateHUDTargetMarker(this.target.position, laserStartPoint);
+
+        this.renderer.render(this.scene, this.camera);
+    }
+
+    updateHUDTargetMarker(targetPos, botPos) {
+        const tempVec = targetPos.clone();
+        tempVec.project(this.camera);
+
+        const x = (tempVec.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-tempVec.y * 0.5 + 0.5) * window.innerHeight;
+
+        const hudMarker = document.getElementById('target-hud-marker');
+        const dist = botPos.distanceTo(targetPos).toFixed(1);
+
+        if (tempVec.z < 1) {
+            hudMarker.style.left = `${x}px`;
+            hudMarker.style.top = `${y}px`;
+            hudMarker.style.opacity = '1';
+            document.getElementById('hud-target-distance').innerText = `LOCK: ${dist}m`;
+        } else {
+            hudMarker.style.opacity = '0';
+        }
+
+        document.getElementById('target-coords-ui').innerText = 
+            `X: ${targetPos.x.toFixed(2)} Y: ${targetPos.y.toFixed(2)} Z: ${targetPos.z.toFixed(2)}`;
+    }
+}
+
+// Global Engine Initialization on User Interaction
+let engine = null;
+window.addEventListener('DOMContentLoaded', () => {
+    engine = new Engine();
+});
+
+// Initialize Web Audio Synth on First Screen Touch/Click
+window.addEventListener('pointerdown', () => {
+    if (engine && engine.audio) {
+        engine.audio.init();
+        engine.audio.playHum();
+    }
+}, { once: true });
+
+</script>
+</body>
+</html>

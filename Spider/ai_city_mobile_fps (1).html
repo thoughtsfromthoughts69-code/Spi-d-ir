@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>AI City - Mobile FPS</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; user-select: none; -webkit-user-select: none; }
+        canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; pointer-events: none; text-shadow: 1px 1px 3px black; font-size: 14px; z-index: 10; }
+        .joystick-zone { position: absolute; bottom: 30px; left: 30px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); pointer-events: none; display: none; z-index: 10; }
+        .joystick-knob { position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; margin-top: -25px; margin-left: -25px; border-radius: 50%; background: rgba(255,255,255,0.6); pointer-events: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 20px; text-shadow: 0 2px 4px rgba(0,0,0,0.5); z-index: 20; background: rgba(0,0,0,0.7); padding: 15px 25px; border-radius: 8px; border: 1px solid #333; }
+        .loader { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff; border-top: 2px solid transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 8px; vertical-align: middle; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="ui"><strong>City Explorer</strong><br>Left side: Move (Joystick)<br>Right side: Look (Swipe)</div>
+    <div id="loading"><div class="loader"></div>Loading Environment...</div>
+    <div id="joystick" class="joystick-zone"><div class="joystick-knob" id="knob"></div></div>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0a);
+        scene.fog = new THREE.FogExp2(0x0a0a0a, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        const cameraRig = new THREE.Group();
+        cameraRig.position.set(0, 1.8, 40); // Start position
+        cameraRig.add(camera);
+        camera.position.set(0, 0, 0);
+        scene.add(cameraRig);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xfff0dd, 2);
+        dirLight.position.set(50, 100, -30);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 150;
+        dirLight.shadow.camera.left = -50;
+        dirLight.shadow.camera.right = 50;
+        dirLight.shadow.camera.top = 50;
+        dirLight.shadow.camera.bottom = -50;
+        scene.add(dirLight);
+
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(300, 300), 
+            new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 })
+        );
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Inject current layouts directly into the exported file
+        const layout = [{"modelName":"g-wagon","x":-4,"y":3.845,"z":0,"rotationX":1.57,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"g-wagon","x":-4,"y":11.535,"z":0,"rotationX":1.57,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"g-wagon","x":4,"y":3.845,"z":0,"rotationX":1.57,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"g-wagon","x":4,"y":11.535,"z":0,"rotationX":1.57,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"impala","x":0,"y":16,"z":0,"rotationX":0,"rotationY":1.57,"rotationZ":0,"scale":1},{"modelName":"impala","x":0,"y":17.64,"z":0,"rotationX":0,"rotationY":1.57,"rotationZ":0,"scale":1},{"modelName":"impala","x":0,"y":19.28,"z":0,"rotationX":0,"rotationY":1.57,"rotationZ":0,"scale":1},{"modelName":"impala","x":0,"y":20.92,"z":0,"rotationX":0,"rotationY":1.57,"rotationZ":0,"scale":1},{"modelName":"impala","x":0,"y":24.02,"z":0,"rotationX":1.57,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity","x":0,"y":27.5,"z":0,"rotationX":0,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"g-wagon","x":-7,"y":21,"z":0,"rotationX":0,"rotationY":1.57,"rotationZ":0,"scale":1},{"modelName":"g-wagon","x":-14.6,"y":21,"z":0,"rotationX":0,"rotationY":1.57,"rotationZ":0,"scale":1},{"modelName":"g-wagon","x":7,"y":21,"z":0,"rotationX":0,"rotationY":1.57,"rotationZ":0,"scale":1},{"modelName":"g-wagon","x":14.6,"y":21,"z":0,"rotationX":0,"rotationY":1.57,"rotationZ":0,"scale":1},{"modelName":"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity","x":-4,"y":0.54,"z":3,"rotationX":0,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity","x":4,"y":0.54,"z":3,"rotationX":0,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity","x":-20,"y":21,"z":0,"rotationX":0,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity","x":20,"y":21,"z":0,"rotationX":0,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity","x":-1,"y":28.2,"z":2,"rotationX":0,"rotationY":0,"rotationZ":0,"scale":0.2},{"modelName":"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity","x":1,"y":28.2,"z":2,"rotationX":0,"rotationY":0,"rotationZ":0,"scale":0.2},{"modelName":"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity","x":0,"y":17,"z":1.5,"rotationX":1.57,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity","x":0,"y":19,"z":1.5,"rotationX":1.57,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity","x":0,"y":21,"z":1.5,"rotationX":1.57,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity","x":-4,"y":7.7,"z":1.5,"rotationX":1.57,"rotationY":0,"rotationZ":0,"scale":1},{"modelName":"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity","x":4,"y":7.7,"z":1.5,"rotationX":1.57,"rotationY":0,"rotationZ":0,"scale":1}];
+        const modelsInfo = {"wood-pallet":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/wood-pallet.gltf"},"impala":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/impala.gltf"},"gantry-model":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/gantry-model.gltf"},"Refrigerator":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/Refrigerator.gltf"},"gears":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/gears.gltf"},"mezzazine":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/mezzazine.gltf"},"townhouse":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/townhouse.gltf"},"driveway":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/driveway.gltf"},"dual-wield-desert-eagles":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/dual-wield-desert-eagles.gltf"},"small-studio-apt-in-high-fidelity":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/small-studio-apt-in-high-fidelity.gltf"},"Small Studio":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/Small%20Studio.gltf"},"m-o-a-t":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/m-o-a-t.gltf"},"g-wagon":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/g-wagon.gltf"},"aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/aaa-grade-assault-drone-rectangular-body-with-cyber-inlays-in-high-fidelity.gltf"},"pick-up-truck-in-high-fidelity":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/pick-up-truck-in-high-fidelity.gltf"},"streetlight":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/streetlight.gltf"},"sidewalk":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/sidewalk.gltf"},"cellphone":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/cellphone.gltf"},"pavement":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/pavement.gltf"},"liquor-store":{"url":"https://raw.githubusercontent.com/thoughtsfromthoughts69-code/Gltf-Models-/main/Models/liquor-store.gltf"}};
+        const cityScale = 0.1;
+
+        const cityGroup = new THREE.Group();
+        cityGroup.scale.set(cityScale, cityScale, cityScale);
+        scene.add(cityGroup);
+
+        const loader = new GLTFLoader();
+        const loadedModels = {};
+        
+        async function loadModels() {
+            const promises = Object.keys(modelsInfo).map(name => {
+                return new Promise((resolve) => {
+                    const info = modelsInfo[name];
+                    if (info.isProcedural) {
+                        let geo;
+                        if (name === 'OfficeTower') geo = new THREE.BoxGeometry(2, 10, 2);
+                        else if (name === 'ApartmentBlock') geo = new THREE.BoxGeometry(4, 5, 3);
+                        else if (name === 'SmallHouse') geo = new THREE.BoxGeometry(1.5, 1.5, 2);
+                        else if (name === 'RoadStraight') { geo = new THREE.PlaneGeometry(2, 4); geo.rotateX(-Math.PI/2); }
+                        else if (name === 'TreeLarge') { geo = new THREE.CylinderGeometry(0.5, 0.5, 3); geo.translate(0,1.5,0); }
+                        else if (name === 'ParkArea') { geo = new THREE.PlaneGeometry(6, 6); geo.rotateX(-Math.PI/2); }
+                        else geo = new THREE.BoxGeometry(1, 1, 1);
+                        
+                        const mat = new THREE.MeshStandardMaterial({ color: info.color, roughness: 0.7 });
+                        const mesh = new THREE.Mesh(geo, mat);
+                        mesh.castShadow = true; mesh.receiveShadow = true;
+                        
+                        const group = new THREE.Group();
+                        group.add(mesh);
+                        
+                        const box = new THREE.Box3().setFromObject(group);
+                        const center = box.getCenter(new THREE.Vector3());
+                        group.position.x = -center.x;
+                        group.position.y = -box.min.y;
+                        group.position.z = -center.z;
+                        
+                        const wrapper = new THREE.Group();
+                        wrapper.add(group);
+                        loadedModels[name] = wrapper;
+                        resolve();
+                    } else if (info.url) {
+                        const resourcePath = info.url.substring(0, info.url.lastIndexOf('/') + 1);
+                        loader.setResourcePath(resourcePath);
+                        loader.load(info.url, (gltf) => {
+                            const modelScene = gltf.scene;
+                            modelScene.traverse((c) => {
+                                if (c.isMesh) {
+                                    c.castShadow = true;
+                                    c.receiveShadow = true;
+                                }
+                            });
+                            const box = new THREE.Box3().setFromObject(modelScene);
+                            const center = box.getCenter(new THREE.Vector3());
+                            modelScene.position.x = -center.x;
+                            modelScene.position.y = -box.min.y;
+                            modelScene.position.z = -center.z;
+                            const wrapper = new THREE.Group();
+                            wrapper.add(modelScene);
+                            loadedModels[name] = wrapper;
+                            resolve();
+                        }, undefined, () => resolve());
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+
+            await Promise.all(promises);
+            document.getElementById('loading').style.display = 'none';
+            
+            if (layout) {
+                layout.forEach(item => {
+                    const template = loadedModels[item.modelName];
+                    if (template) {
+                        const instance = template.clone();
+                        instance.position.set(item.x || 0, item.y || 0, item.z || 0);
+                        instance.rotation.set(item.rotationX || 0, item.rotationY || 0, item.rotationZ || 0);
+                        const s = item.scale || 1;
+                        instance.scale.set(s, s, s);
+                        cityGroup.add(instance);
+                    }
+                });
+            }
+        }
+
+        loadModels();
+
+        // Mobile Controls Data
+        let moveTouchId = null;
+        let lookTouchId = null;
+        const moveData = { x: 0, y: 0 };
+        
+        let lookYaw = 0;
+        let lookPitch = 0;
+        let lastLookX = 0;
+        let lastLookY = 0;
+        const PI_2 = Math.PI / 2;
+
+        const joystick = document.getElementById('joystick');
+        const knob = document.getElementById('knob');
+        let joystickCenter = { x: 0, y: 0 };
+
+        document.body.addEventListener('touchstart', (e) => {
+            e.preventDefault(); 
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.clientX < window.innerWidth / 2) {
+                    if (moveTouchId === null) {
+                        moveTouchId = t.identifier;
+                        joystick.style.display = 'block';
+                        joystick.style.left = (t.clientX - 60) + 'px';
+                        joystick.style.top = (t.clientY - 60) + 'px';
+                        joystickCenter = { x: t.clientX, y: t.clientY };
+                        knob.style.transform = 'translate(0px, 0px)';
+                    }
+                } else {
+                    if (lookTouchId === null) {
+                        lookTouchId = t.identifier;
+                        lastLookX = t.clientX;
+                        lastLookY = t.clientY;
+                    }
+                }
+            }
+        }, { passive: false });
+
+        document.body.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === moveTouchId) {
+                    let dx = t.clientX - joystickCenter.x;
+                    let dy = t.clientY - joystickCenter.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    const maxDist = 40;
+                    if (dist > maxDist) {
+                        dx = (dx / dist) * maxDist;
+                        dy = (dy / dist) * maxDist;
+                    }
+                    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+                    moveData.x = dx / maxDist;
+                    moveData.y = dy / maxDist;
+                } else if (t.identifier === lookTouchId) {
+                    const dx = t.clientX - lastLookX;
+                    const dy = t.clientY - lastLookY;
+                    lastLookX = t.clientX;
+                    lastLookY = t.clientY;
+                    
+                    const sensitivity = 0.005;
+                    lookYaw -= dx * sensitivity;
+                    lookPitch -= dy * sensitivity;
+                    lookPitch = Math.max(-PI_2 + 0.01, Math.min(PI_2 - 0.01, lookPitch));
+                    
+                    cameraRig.rotation.y = lookYaw;
+                    camera.rotation.x = lookPitch;
+                }
+            }
+        }, { passive: false });
+
+        const endTouch = (e) => {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === moveTouchId) {
+                    moveTouchId = null;
+                    joystick.style.display = 'none';
+                    moveData.x = 0;
+                    moveData.y = 0;
+                } else if (t.identifier === lookTouchId) {
+                    lookTouchId = null;
+                }
+            }
+        };
+        
+        document.body.addEventListener('touchend', endTouch);
+        document.body.addEventListener('touchcancel', endTouch);
+
+        // Fallback Desktop WASD Controls
+        const keys = { w: false, a: false, s: false, d: false };
+        window.addEventListener('keydown', (e) => { if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; });
+        window.addEventListener('keyup', (e) => { if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = false; });
+        
+        let isMouseDown = false;
+        window.addEventListener('mousedown', (e) => {
+            if(e.clientX > window.innerWidth / 2) {
+                isMouseDown = true;
+                lastLookX = e.clientX;
+                lastLookY = e.clientY;
+            }
+        });
+        window.addEventListener('mousemove', (e) => {
+            if(isMouseDown) {
+                const dx = e.clientX - lastLookX;
+                const dy = e.clientY - lastLookY;
+                lastLookX = e.clientX;
+                lastLookY = e.clientY;
+                const sensitivity = 0.005;
+                lookYaw -= dx * sensitivity;
+                lookPitch -= dy * sensitivity;
+                lookPitch = Math.max(-PI_2 + 0.01, Math.min(PI_2 - 0.01, lookPitch));
+                cameraRig.rotation.y = lookYaw;
+                camera.rotation.x = lookPitch;
+            }
+        });
+        window.addEventListener('mouseup', () => { isMouseDown = false; });
+
+        const clock = new THREE.Clock();
+        const velocity = new THREE.Vector3();
+        const moveSpeed = 15;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = Math.min(clock.getDelta(), 0.1);
+            
+            velocity.set(0, 0, 0);
+            
+            if (moveTouchId !== null) {
+                velocity.z = moveData.y;
+                velocity.x = moveData.x;
+            } else {
+                if (keys.w) velocity.z -= 1;
+                if (keys.s) velocity.z += 1;
+                if (keys.a) velocity.x -= 1;
+                if (keys.d) velocity.x += 1;
+                if (velocity.lengthSq() > 0) velocity.normalize();
+            }
+            
+            velocity.multiplyScalar(moveSpeed * delta);
+            velocity.applyAxisAngle(new THREE.Vector3(0,1,0), lookYaw);
+            
+            cameraRig.position.add(velocity);
+            
+            // Constrain to general city bounds
+            cameraRig.position.x = Math.max(-80, Math.min(80, cameraRig.position.x));
+            cameraRig.position.z = Math.max(-80, Math.min(80, cameraRig.position.z));
+
+            renderer.render(scene, camera);
+        }
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
